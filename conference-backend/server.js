@@ -110,6 +110,7 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
         const paymentMimeType = req.files[0].mimetype;
         const paymentFullBase64 = `data:${paymentMimeType};base64,${paymentBase64}`;
         
+                // Create reservation - using base64 column only
         const { data: reservation, error: reservationError } = await supabase
             .from('reservations')
             .insert({ 
@@ -117,6 +118,7 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
                 total_price, 
                 payment_platform, 
                 payment_screenshot_base64: paymentFullBase64,
+                payment_screenshot: null,  // Set to null since we use base64
                 status: 'pending' 
             })
             .select()
