@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مؤتمر 2025 - التسجيل</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Language and Theme Controls -->
+        <div class="controls">
+            <button id="langBtn" class="lang-btn">English</button>
+            <button id="themeBtn" class="theme-btn">🌙 Dark</button>
+        </div>
+
+        <!-- Logo Section -->
+        <div class="logo">
+            <img src="https://via.placeholder.com/200x100?text=Conference+Logo" alt="Conference Logo" id="logo">
+        </div>
+
+        <h1 id="title">تسجيل المؤتمر</h1>
+
+        <!-- Date Selection -->
+        <div class="date-selection">
+            <h2 id="dateTitle">اختر أيام الحضور</h2>
+            <div class="date-buttons">
+                <button id="oneDayBtn" class="date-btn">يوم واحد (29 أو 30 مايو)</button>
+                <button id="twoDaysBtn" class="date-btn">يومين (29 و 30 مايو)</button>
+            </div>
+            <div id="dayChoice" class="day-choice hidden">
+                <label id="chooseDayLabel">اختر اليوم:</label>
+                <select id="selectedDay">
+                    <option value="29th May">29 مايو</option>
+                    <option value="30th May">30 مايو</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Reservation Form -->
+        <form id="reservationForm">
+            <div class="form-section">
+                <h3 id="contactTitle">معلومات الاتصال</h3>
+                <input type="text" id="phoneNumber" placeholder="رقم WhatsApp (مثال: 966512345678)" required>
+            </div>
+
+            <div class="form-section">
+                <h3 id="participantsTitle">المشاركون</h3>
+                <div id="participantsContainer">
+                    <div class="participant-card">
+                        <input type="text" placeholder="الاسم الكامل" class="participant-name" required>
+                        <div class="file-label">
+                            <label>📄 صورة بطاقة الهوية (مطلوب)</label>
+                            <input type="file" accept="image/*" class="participant-id-image" required>
+                        </div>
+                        <input type="number" placeholder="العمر" class="participant-age" required>
+                        <select class="participant-group" required>
+                            <option value="">اختر المجموعة</option>
+                        </select>
+                        <div class="group-seats"></div>
+                        <button type="button" class="remove-participant-btn"
+                            onclick="this.closest('.participant-card').remove(); populateGroupOptions(); calculateTotalPrice();">🗑️
+                            حذف</button>
+                    </div>
+                </div>
+                <button type="button" id="addParticipantBtn" class="add-btn">+ إضافة مشارك آخر</button>
+            </div>
+
+            <div class="form-section">
+                <h3 id="paymentTitle">معلومات الدفع</h3>
+                <select id="paymentPlatform" required>
+                    <option value="">اختر منصة الدفع</option>
+                    <option value="Bank Transfer">تحويل بنكي</option>
+                    <option value="Vodafone Cash">فودافون كاش</option>
+                    <option value="InstaPay">إنستا باي</option>
+                </select>
+                <input type="file" id="paymentScreenshot" accept="image/*" required>
+                <div id="priceDisplay" class="price-display"></div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">إرسال التسجيل</button>
+        </form>
+        <div id="successMessage" class="success-message hidden"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
