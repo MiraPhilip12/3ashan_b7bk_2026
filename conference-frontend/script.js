@@ -5,8 +5,8 @@ let groupsData = [];
 
 // Prices (you can change these)
 const PRICES = {
-    oneDay: 100,
-    twoDays: 150
+    oneDay: 350,
+    twoDays: 700
 };
 
 // Backend URL (change this when you deploy)
@@ -106,7 +106,6 @@ function addParticipant() {
     populateGroupOptions();
 }
 
-// Submit reservation (NO manual National ID input - only image)
 // Submit reservation (NO manual National ID input - only image)
 async function submitReservation(event) {
     event.preventDefault();
