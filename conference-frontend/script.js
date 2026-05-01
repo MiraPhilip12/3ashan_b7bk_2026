@@ -111,7 +111,7 @@ async function submitReservation(event) {
     event.preventDefault();
     
     const phoneNumber = document.getElementById('phoneNumber').value;
-    const paymentPlatform = document.getElementById('paymentPlatform').value;
+    const paymentPlatform = document.querySelector('input[name="payment_platform"]:checked').value;
     const paymentScreenshot = document.getElementById('paymentScreenshot').files[0];
     
     console.log('Phone:', phoneNumber);
