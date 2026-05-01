@@ -134,6 +134,8 @@ body.dark .form-section {
     background: #f9f9f9;
     padding: 15px;
     margin-bottom: 15px;
+    margin-left: auto;
+    margin-right: auto;
     border-radius: 10px;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
