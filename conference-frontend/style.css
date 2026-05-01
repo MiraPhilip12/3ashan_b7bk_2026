@@ -141,6 +141,7 @@ body.dark .form-section {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 10px;
     box-sizing: border-box;
+    width: 80%;
 }
 
 body.dark .participant-card {
