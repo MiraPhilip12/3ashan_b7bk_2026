@@ -10,7 +10,7 @@ const PRICES = {
 };
 
 // Backend URL (change this when you deploy)
-const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = 'https://threeashan-b7bk-2026.onrender.com';
 
 // Load groups from backend
 async function loadGroups() {

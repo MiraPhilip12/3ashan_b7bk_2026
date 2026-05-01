@@ -194,6 +194,21 @@ app.post('/api/admin/approve/:id', async (req, res) => {
 
 app.post('/api/admin/reject/:id', async (req, res) => {
     const { id } = req.params;
+    
+    // Get participants to return their seats
+    const { data: participants, error: fetchError } = await supabase
+        .from('participants')
+        .select('color_group')
+        .eq('reservation_id', id);
+    
+    if (!fetchError && participants) {
+        // Return seats for each participant's group
+        for (const p of participants) {
+            await supabase.rpc('decrement_group_count', { group_name: p.color_group });
+        }
+    }
+    
+    // Update status to rejected
     const { error } = await supabase
         .from('reservations')
         .update({ status: 'rejected' })

@@ -1,4 +1,4 @@
-const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = 'https://threeashan-b7bk-2026.onrender.com';
 let isLoggedIn = false;
 
 // Login function
