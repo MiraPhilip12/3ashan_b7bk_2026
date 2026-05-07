@@ -74,6 +74,10 @@ function displayReservations(reservations) {
                 <div class="info-item"><strong>منصة الدفع:</strong> ${res.payment_platform}</div>
                 <div class="info-item"><strong>تاريخ التسجيل:</strong> ${new Date(res.created_at).toLocaleDateString('ar-EG')}</div>
                 <div class="info-item"><strong>إيصال الدفع:</strong><br><img src="${res.payment_screenshot_base64 || res.payment_screenshot}" class="payment-screenshot" onclick="showImage('${res.payment_screenshot_base64 || res.payment_screenshot}')"></div>
+                <div class="info-item">
+    <strong>إيصال الدفع:</strong><br>
+    <button class="view-img-btn" onclick="fetchAndShowImage('payment', ${res.id})">🖼️ عرض الإيصال</button>
+</div>
             </div>
             
             <div class="participants-table">
@@ -86,6 +90,10 @@ function displayReservations(reservations) {
                             <tr>
                                 <td>${p.name}</td>
                                 <td>${p.national_id_image_base64 ? `<img src="${p.national_id_image_base64}" class="id-image" onclick="showImage('${p.national_id_image_base64}')">` : 'لا توجد'}</td>
+                                <td>
+    <button class="view-img-btn" onclick="fetchAndShowImage('id', ${p.id})">👁️ عرض الهوية</button>
+</td>
+
                                 <td>${p.age}</td>
                                 <td>${p.days}</td>
                                 <td style="background:${getGroupColor(p.color_group)}; color:white; padding:5px; border-radius:5px;">${p.color_group}</td>
@@ -103,6 +111,8 @@ function displayReservations(reservations) {
                 </div>
             ` : ''}
         </div>
+        
+
     `).join('');
 }
 
@@ -226,3 +236,30 @@ document.getElementById('exportExcelBtn').addEventListener('click', exportExcel)
 document.getElementById('adminPassword').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') login();
 });
+
+async function fetchAndShowImage(type, id) {
+    const endpoint = type === 'id' ? 'participant-image' : 'payment-image';
+    
+    // Change button text to show loading
+    const btn = event.target;
+    const originalText = btn.innerText;
+    btn.innerText = '⏳ جاري التحميل...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/admin/${endpoint}/${id}`);
+        const data = await response.json();
+        
+        if (data.image) {
+            showImage(data.image); // This uses your existing showImage function
+        } else {
+            alert('الصورة غير موجودة');
+        }
+    } catch (error) {
+        alert('خطأ في تحميل الصورة');
+        console.error(error);
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}

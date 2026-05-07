@@ -202,6 +202,31 @@ app.get('/api/admin/reservations', async (req, res) => {
 });
 
 
+// Get a specific ID card image
+app.get('/api/admin/participant-image/:id', async (req, res) => {
+    const { data, error } = await supabase
+        .from('participants')
+        .select('national_id_image_base64')
+        .eq('id', req.params.id)
+        .single();
+    
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ image: data.national_id_image_base64 });
+});
+
+// Get a specific payment screenshot
+app.get('/api/admin/payment-image/:id', async (req, res) => {
+    const { data, error } = await supabase
+        .from('reservations')
+        .select('payment_screenshot_base64')
+        .eq('id', req.params.id)
+        .single();
+    
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ image: data.payment_screenshot_base64 });
+});
+
+
 
 
 
