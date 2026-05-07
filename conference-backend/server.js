@@ -176,21 +176,31 @@ app.get('/api/admin/reservations', async (req, res) => {
         const { data: reservations, error } = await supabase
             .from('reservations')
             .select(`
-                *,
-                participants!reservation_id(*)
-            `)
+                id,
+                phone_number,
+                total_price,
+                payment_platform,
+                status,
+                created_at,
+                participants (
+                    id,
+                    name,
+                    age,
+                    days,
+                    color_group,
+                    price
+                )
+            `) // Notice: We EXCLUDED payment_screenshot_base64 and national_id_image_base64
             .order('created_at', { ascending: false });
         
-        if (error) {
-            console.error('Supabase Error:', error);
-            return res.status(500).json({ error: error.message });
-        }
-        
+        if (error) throw error;
         res.json(reservations || []);
     } catch (err) {
+        console.error('Fetch Error:', err);
         res.status(500).json({ error: err.message });
     }
 });
+
 
 
 
