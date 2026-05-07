@@ -172,22 +172,26 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
 
 // Get all reservations
 app.get('/api/admin/reservations', async (req, res) => {
-    // Specify the relationship using !column_name to disambiguate
-    const { data: reservations, error } = await supabase
-        .from('reservations')
-        .select(`
-            *,
-            participants!reservation_id(*)
-        `)
-        .order('created_at', { ascending: false });
-    
-    if (error) {
-        console.error('Supabase Error:', error);
-        return res.status(500).json({ error: error.message });
+    try {
+        const { data: reservations, error } = await supabase
+            .from('reservations')
+            .select(`
+                *,
+                participants!reservation_id(*)
+            `)
+            .order('created_at', { ascending: false });
+        
+        if (error) {
+            console.error('Supabase Error:', error);
+            return res.status(500).json({ error: error.message });
+        }
+        
+        res.json(reservations || []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-    
-    res.json(reservations || []);
 });
+
 
 
 
