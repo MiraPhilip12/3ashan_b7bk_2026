@@ -35,12 +35,22 @@ async function login() {
 async function loadReservations() {
     try {
         const response = await fetch(`${BACKEND_URL}/api/admin/reservations`);
-        const reservations = await response.json();
-        displayReservations(reservations);
+        const data = await response.json();
+
+        // Check if data is an array
+        if (Array.isArray(data)) {
+            displayReservations(data);
+        } else {
+            // This happens when the server sends { error: "..." }
+            console.error('Server error:', data.error);
+            document.getElementById('reservationsList').innerHTML = 
+                `<p class="error">خطأ من الخادم: ${data.error || 'فشل تحميل البيانات'}</p>`;
+        }
     } catch (error) {
-        console.error('Error loading reservations:', error);
+        console.error('Connection error:', error);
     }
 }
+
 
 // Display reservations - UPDATED to use base64 fields
 function displayReservations(reservations) {
