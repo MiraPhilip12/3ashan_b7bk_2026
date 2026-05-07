@@ -5,16 +5,16 @@ let isLoggedIn = false;
 async function login() {
     const password = document.getElementById('adminPassword').value;
     const loginError = document.getElementById('loginError');
-    
+
     try {
         const response = await fetch(`${BACKEND_URL}/api/admin/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password: password })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             isLoggedIn = true;
             document.getElementById('loginSection').classList.add('hidden');
@@ -43,7 +43,7 @@ async function loadReservations() {
         } else {
             // This happens when the server sends { error: "..." }
             console.error('Server error:', data.error);
-            document.getElementById('reservationsList').innerHTML = 
+            document.getElementById('reservationsList').innerHTML =
                 `<p class="error">خطأ من الخادم: ${data.error || 'فشل تحميل البيانات'}</p>`;
         }
     } catch (error) {
@@ -55,12 +55,12 @@ async function loadReservations() {
 // Display reservations - UPDATED to use base64 fields
 function displayReservations(reservations) {
     const container = document.getElementById('reservationsList');
-    
+
     if (reservations.length === 0) {
         container.innerHTML = '<p>لا توجد طلبات حالياً</p>';
         return;
     }
-    
+
     container.innerHTML = reservations.map(res => `
         <div class="reservation-card">
             <div class="reservation-header">
@@ -89,7 +89,6 @@ function displayReservations(reservations) {
                         ${res.participants.map(p => `
                             <tr>
                                 <td>${p.name}</td>
-                                <td>${p.national_id_image_base64 ? `<img src="${p.national_id_image_base64}" class="id-image" onclick="showImage('${p.national_id_image_base64}')">` : 'لا توجد'}</td>
                                 <td>
     <button class="view-img-btn" onclick="fetchAndShowImage('id', ${p.id})">👁️ عرض الهوية</button>
 </td>
@@ -117,7 +116,7 @@ function displayReservations(reservations) {
 }
 
 function getStatusText(status) {
-    switch(status) {
+    switch (status) {
         case 'pending': return 'قيد المراجعة';
         case 'approved': return 'تم القبول';
         case 'rejected': return 'مرفوض';
@@ -140,7 +139,7 @@ function getGroupColor(groupName) {
 // Approve reservation
 async function approveReservation(id) {
     if (!confirm('هل أنت متأكد من قبول هذا الطلب؟ سيتم إرسال رسالة تأكيد واتساب.')) return;
-    
+
     try {
         const response = await fetch(`${BACKEND_URL}/api/admin/approve/${id}`, {
             method: 'POST'
@@ -159,7 +158,7 @@ async function approveReservation(id) {
 // Reject reservation
 async function rejectReservation(id) {
     if (!confirm('هل أنت متأكد من رفض هذا الطلب؟')) return;
-    
+
     try {
         const response = await fetch(`${BACKEND_URL}/api/admin/reject/${id}`, {
             method: 'POST'
@@ -207,15 +206,15 @@ function createModal() {
         <img class="modal-content" id="modalImage">
     `;
     document.body.appendChild(modal);
-    
+
     modal.querySelector('.close-modal').onclick = () => {
         modal.style.display = 'none';
     };
-    
+
     window.onclick = (event) => {
         if (event.target === modal) modal.style.display = 'none';
     };
-    
+
     return modal;
 }
 
@@ -239,7 +238,7 @@ document.getElementById('adminPassword').addEventListener('keypress', (e) => {
 
 async function fetchAndShowImage(type, id) {
     const endpoint = type === 'id' ? 'participant-image' : 'payment-image';
-    
+
     // Change button text to show loading
     const btn = event.target;
     const originalText = btn.innerText;
@@ -249,7 +248,7 @@ async function fetchAndShowImage(type, id) {
     try {
         const response = await fetch(`${BACKEND_URL}/api/admin/${endpoint}/${id}`);
         const data = await response.json();
-        
+
         if (data.image) {
             showImage(data.image); // This uses your existing showImage function
         } else {
