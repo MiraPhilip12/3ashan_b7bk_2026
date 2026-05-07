@@ -31,32 +31,18 @@ app.get('/api/test', (req, res) => {
 
 app.get('/api/debug-db', async (req, res) => {
     try {
-        // Get reservation count
-        const { count: reservationCount, error: rErr } = await supabase
+        const { data: reservations, error } = await supabase
             .from('reservations')
-            .select('*', { count: 'exact', head: true });
-        
-        // Get participant count
-        const { count: participantCount, error: pErr } = await supabase
-            .from('participants')
-            .select('*', { count: 'exact', head: true });
-        
-        // Get sample reservations
-        const { data: sampleReservations, error: sErr } = await supabase
-            .from('reservations')
-            .select('id, phone_number, total_price, status, created_at')
+            .select('*')
             .order('id', { ascending: false })
-            .limit(3);
+            .limit(5);
         
         res.json({
             success: true,
             message: 'Database connected',
-            stats: {
-                reservations: reservationCount || 0,
-                participants: participantCount || 0
-            },
-            recent_reservations: sampleReservations || [],
-            errors: { reservations: rErr, participants: pErr, sample: sErr }
+            count: reservations?.length || 0,
+            sample: reservations,
+            error: error
         });
     } catch (err) {
         res.json({ success: false, error: err.message });
