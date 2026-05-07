@@ -172,14 +172,23 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
 
 // Get all reservations
 app.get('/api/admin/reservations', async (req, res) => {
+    // Specify the relationship using the table name and the foreign key column
     const { data: reservations, error } = await supabase
         .from('reservations')
-        .select('*, participants(*)')
+        .select(`
+            *,
+            participants:participants(reservation_id, name, age, days, color_group, price, national_id_image_base64)
+        `)
         .order('created_at', { ascending: false });
     
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(reservations);
+    if (error) {
+        console.error('Supabase Error:', error);
+        return res.status(500).json({ error: error.message });
+    }
+    
+    res.json(reservations || []);
 });
+
 
 app.post('/api/admin/approve/:id', async (req, res) => {
     const { id } = req.params;
