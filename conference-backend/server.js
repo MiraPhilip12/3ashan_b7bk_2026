@@ -162,11 +162,15 @@ app.post('/api/admin/login', async (req, res) => {
     }
 });
 
-// Get all reservations - FIXED
+// Get all reservations - OPTIMIZED (no timeout)
 app.get('/api/admin/reservations', async (req, res) => {
     try {
         console.log('Fetching reservations...');
         
+        // Set a longer timeout for this specific request
+        req.setTimeout(30000); // 30 seconds
+        
+        // Fetch all reservations
         const { data: reservations, error } = await supabase
             .from('reservations')
             .select('*')
@@ -177,21 +181,39 @@ app.get('/api/admin/reservations', async (req, res) => {
             return res.status(500).json({ error: error.message });
         }
         
-        // Get participants for each reservation
-        const results = [];
-        for (const resv of reservations) {
-            const { data: participants, error: pErr } = await supabase
-                .from('participants')
-                .select('*')
-                .eq('reservation_id', resv.id);
-            
-            results.push({
-                ...resv,
-                participants: participants || []
-            });
+        if (!reservations || reservations.length === 0) {
+            return res.json([]);
         }
         
-        console.log(`Found ${results.length} reservations`);
+        // Get ALL participants in ONE query (not a loop)
+        const reservationIds = reservations.map(r => r.id);
+        const { data: allParticipants, error: pErr } = await supabase
+            .from('participants')
+            .select('*')
+            .in('reservation_id', reservationIds);
+        
+        if (pErr) {
+            console.error('Participants error:', pErr);
+            // Return reservations without participants rather than failing
+            return res.json(reservations.map(r => ({ ...r, participants: [] })));
+        }
+        
+        // Group participants by reservation_id
+        const participantsByReservation = {};
+        for (const p of allParticipants || []) {
+            if (!participantsByReservation[p.reservation_id]) {
+                participantsByReservation[p.reservation_id] = [];
+            }
+            participantsByReservation[p.reservation_id].push(p);
+        }
+        
+        // Combine reservations with their participants
+        const results = reservations.map(resv => ({
+            ...resv,
+            participants: participantsByReservation[resv.id] || []
+        }));
+        
+        console.log(`✅ Found ${results.length} reservations`);
         res.json(results);
         
     } catch (err) {
