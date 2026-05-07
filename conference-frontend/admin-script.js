@@ -31,39 +31,77 @@ async function login() {
     }
 }
 
-// Load all reservations
+// Load all reservations - FIXED
 async function loadReservations() {
     try {
+        console.log('Fetching reservations from:', `${BACKEND_URL}/api/admin/reservations`);
+        
         const response = await fetch(`${BACKEND_URL}/api/admin/reservations`);
-        const reservations = await response.json();
+        console.log('Response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Received data type:', typeof data);
+        console.log('Is array?', Array.isArray(data));
+        console.log('Data:', data);
+        
+        // Handle both array and object responses
+        let reservations = [];
+        if (Array.isArray(data)) {
+            reservations = data;
+        } else if (data.data && Array.isArray(data.data)) {
+            reservations = data.data;
+        } else if (data.reservations && Array.isArray(data.reservations)) {
+            reservations = data.reservations;
+        } else {
+            console.warn('Unexpected data format:', data);
+            reservations = [];
+        }
+        
         displayReservations(reservations);
+        
     } catch (error) {
         console.error('Error loading reservations:', error);
+        document.getElementById('reservationsList').innerHTML = 
+            '<p style="color: red;">خطأ في تحميل الطلبات: ' + error.message + '</p>';
     }
 }
 
-// Display reservations - UPDATED to use base64 fields
+// Display reservations - FIXED
 function displayReservations(reservations) {
     const container = document.getElementById('reservationsList');
     
-    if (reservations.length === 0) {
+    console.log('Displaying reservations:', reservations.length);
+    
+    if (!reservations || reservations.length === 0) {
         container.innerHTML = '<p>لا توجد طلبات حالياً</p>';
         return;
     }
     
-    container.innerHTML = reservations.map(res => `
+    container.innerHTML = reservations.map(res => {
+        // Handle participants safely
+        const participants = res.participants || [];
+        
+        return `
         <div class="reservation-card">
             <div class="reservation-header">
                 <span class="reservation-id">طلب #${res.id}</span>
-                <span class="reservation-status status-${res.status}">${getStatusText(res.status)}</span>
+                <span class="reservation-status status-${res.status || 'pending'}">${getStatusText(res.status)}</span>
             </div>
             
             <div class="reservation-info">
-                <div class="info-item"><strong>رقم WhatsApp:</strong> ${res.phone_number}</div>
-                <div class="info-item"><strong>السعر الإجمالي:</strong> ${res.total_price} ج.م</div>
-                <div class="info-item"><strong>منصة الدفع:</strong> ${res.payment_platform}</div>
-                <div class="info-item"><strong>تاريخ التسجيل:</strong> ${new Date(res.created_at).toLocaleDateString('ar-EG')}</div>
-                <div class="info-item"><strong>إيصال الدفع:</strong><br><img src="${res.payment_screenshot_base64 || res.payment_screenshot}" class="payment-screenshot" onclick="showImage('${res.payment_screenshot_base64 || res.payment_screenshot}')"></div>
+                <div class="info-item"><strong>رقم WhatsApp:</strong> ${res.phone_number || 'N/A'}</div>
+                <div class="info-item"><strong>السعر الإجمالي:</strong> ${res.total_price || 0} ج.م</div>
+                <div class="info-item"><strong>منصة الدفع:</strong> ${res.payment_platform || 'N/A'}</div>
+                <div class="info-item"><strong>تاريخ التسجيل:</strong> ${res.created_at ? new Date(res.created_at).toLocaleDateString('ar-EG') : 'N/A'}</div>
+                <div class="info-item"><strong>إيصال الدفع:</strong><br>
+                    ${res.payment_screenshot_base64 ? 
+                        `<img src="${res.payment_screenshot_base64}" class="payment-screenshot" onclick="showImage('${res.payment_screenshot_base64}')">` : 
+                        'لا يوجد إيصال'}
+                </div>
             </div>
             
             <div class="participants-table">
@@ -72,14 +110,16 @@ function displayReservations(reservations) {
                         <tr><th>الاسم</th><th>صورة الهوية</th><th>العمر</th><th>الأيام</th><th>المجموعة</th><th>السعر</th></tr>
                     </thead>
                     <tbody>
-                        ${res.participants.map(p => `
+                        ${participants.map(p => `
                             <tr>
-                                <td>${p.name}</td>
-                                <td>${p.national_id_image_base64 ? `<img src="${p.national_id_image_base64}" class="id-image" onclick="showImage('${p.national_id_image_base64}')">` : 'لا توجد'}</td>
-                                <td>${p.age}</td>
-                                <td>${p.days}</td>
-                                <td style="background:${getGroupColor(p.color_group)}; color:white; padding:5px; border-radius:5px;">${p.color_group}</td>
-                                <td>${p.price} ج.م</td>
+                                <td>${p.name || 'N/A'}</td>
+                                <td>${p.national_id_image_base64 ? 
+                                    `<img src="${p.national_id_image_base64}" class="id-image" onclick="showImage('${p.national_id_image_base64}')">` : 
+                                    'لا توجد'}</td>
+                                <td>${p.age || 'N/A'}</td>
+                                <td>${p.days || 'N/A'}</td>
+                                <td style="background:${getGroupColor(p.color_group)}; color:white; padding:5px; border-radius:5px;">${p.color_group || 'N/A'}</td>
+                                <td>${p.price || 0} ج.م</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -93,7 +133,7 @@ function displayReservations(reservations) {
                 </div>
             ` : ''}
         </div>
-    `).join('');
+    `}).join('');
 }
 
 function getStatusText(status) {
