@@ -172,41 +172,13 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
 
 // Get all reservations
 app.get('/api/admin/reservations', async (req, res) => {
-    try {
-        console.log('📋 Fetching reservations...');
-        
-        // Simplified query without participants join
-        const { data: reservations, error } = await supabase
-            .from('reservations')
-            .select('*')
-            .order('created_at', { ascending: false });
-        
-        if (error) {
-            console.error('❌ DB Error:', error);
-            return res.status(500).json({ error: error.message });
-        }
-        
-        // Get participants separately for each reservation
-        const enrichedReservations = [];
-        for (const resv of reservations || []) {
-            const { data: participants, error: pErr } = await supabase
-                .from('participants')
-                .select('*')
-                .eq('reservation_id', resv.id);
-            
-            enrichedReservations.push({
-                ...resv,
-                participants: participants || []
-            });
-        }
-        
-        console.log(`✅ Found ${enrichedReservations.length} reservations`);
-        res.json(enrichedReservations);
-        
-    } catch (err) {
-        console.error('💥 Error:', err);
-        res.status(500).json({ error: err.message });
-    }
+    const { data: reservations, error } = await supabase
+        .from('reservations')
+        .select('*, participants(*)')
+        .order('created_at', { ascending: false });
+    
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(reservations);
 });
 
 app.post('/api/admin/approve/:id', async (req, res) => {
