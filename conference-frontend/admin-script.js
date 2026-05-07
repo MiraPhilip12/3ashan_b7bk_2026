@@ -1,5 +1,5 @@
 const BACKEND_URL = 'https://threeashan-b7bk-2026.onrender.com';
-let isLoggedIn = false;
+let isLoggedIn = true;
 
 // Login function
 async function login() {
