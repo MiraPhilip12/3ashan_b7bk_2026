@@ -5,10 +5,18 @@ const { createClient } = require('@supabase/supabase-js');
 const ExcelJS = require('exceljs');
 
 const app = express();
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] }));
+
+// CORS configuration
+app.use(cors({
+    origin: ['https://3ashan-b7bk-2026.vercel.app', 'http://localhost:5500', 'http://127.0.0.1:5500', '*'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json({ limit: '50mb' }));
 
-// Supabase configuration - PUT YOUR ACTUAL VALUES HERE
+// Supabase configuration
 const supabaseUrl = 'https://tizzdnyebnnagzvtzhhx.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpenpkbnllYm5uYWd6dnR6aGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0OTczNzEsImV4cCI6MjA5MzA3MzM3MX0.KwY9oq3YnqN2SvamHBRDgfgKPUKaSZ3odbqr50gb2VU';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -16,30 +24,32 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
-// Test endpoint
+// ============ TEST ENDPOINTS ============
 app.get('/api/test', (req, res) => {
     res.json({ message: 'Backend is working!' });
 });
 
-// Test database connection
-app.get('/api/test-db', async (req, res) => {
+app.get('/api/debug-db', async (req, res) => {
     try {
-        // Try to query admin_settings
-        const { data, error } = await supabase
-            .from('admin_settings')
-            .select('*');
+        const { data: reservations, error } = await supabase
+            .from('reservations')
+            .select('*')
+            .order('id', { ascending: false })
+            .limit(5);
         
-        if (error) {
-            return res.json({ error: error.message, details: error });
-        }
-        
-        res.json({ success: true, data: data });
+        res.json({
+            success: true,
+            message: 'Database connected',
+            count: reservations?.length || 0,
+            sample: reservations,
+            error: error
+        });
     } catch (err) {
-        res.json({ error: err.message });
+        res.json({ success: false, error: err.message });
     }
 });
 
-// Get groups
+// ============ GROUPS ENDPOINT ============
 app.get('/api/groups', async (req, res) => {
     try {
         const { data, error } = await supabase.from('group_capacity').select('*');
@@ -56,45 +66,7 @@ app.get('/api/groups', async (req, res) => {
     }
 });
 
-// ADMIN LOGIN - FIXED with better error handling
-app.post('/api/admin/login', async (req, res) => {
-    const { password } = req.body;
-    console.log('Login attempt with password:', password);
-    
-    try {
-        // Use select('*') instead of single() to debug
-        const { data, error } = await supabase
-            .from('admin_settings')
-            .select('*');
-        
-        console.log('Query result:', { data, error });
-        
-        if (error) {
-            console.error('Database error:', error);
-            return res.status(500).json({ error: error.message });
-        }
-        
-        if (!data || data.length === 0) {
-            console.error('No admin settings found');
-            return res.status(500).json({ error: 'No admin settings in database' });
-        }
-        
-        const adminPassword = data[0].admin_password;
-        console.log('Password from DB:', adminPassword);
-        console.log('Comparison:', password === adminPassword);
-        
-        if (password === adminPassword) {
-            res.json({ success: true });
-        } else {
-            res.status(401).json({ error: 'Invalid password' });
-        }
-    } catch (err) {
-        console.error('Unexpected error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Submit reservation
+// ============ RESERVATIONS ENDPOINT ============
 app.post('/api/reservations', upload.array('national_id_images', 20), async (req, res) => {
     try {
         console.log('=== NEW SUBMISSION ===');
@@ -110,7 +82,7 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
         const paymentMimeType = req.files[0].mimetype;
         const paymentFullBase64 = `data:${paymentMimeType};base64,${paymentBase64}`;
         
-                // Create reservation - using base64 column only
+        // Create reservation
         const { data: reservation, error: reservationError } = await supabase
             .from('reservations')
             .insert({ 
@@ -118,7 +90,6 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
                 total_price, 
                 payment_platform, 
                 payment_screenshot_base64: paymentFullBase64,
-                payment_screenshot: null,  // Set to null since we use base64
                 status: 'pending' 
             })
             .select()
@@ -131,6 +102,7 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
         
         console.log('Reservation created:', reservation.id);
         
+        // Process each participant
         for (let i = 0; i < participants.length; i++) {
             const p = participants[i];
             const idFile = req.files[i + 1];
@@ -157,8 +129,6 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
             if (participantError) {
                 console.error('Participant insert error:', participantError);
             }
-            
-            await supabase.rpc('increment_group_count', { group_name: p.color_group });
         }
         
         console.log('=== SUBMISSION COMPLETE ===');
@@ -170,41 +140,62 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
     }
 });
 
-// Get all reservations
+// ============ ADMIN ENDPOINTS ============
+app.post('/api/admin/login', async (req, res) => {
+    const { password } = req.body;
+    console.log('Login attempt');
+    
+    const { data, error } = await supabase
+        .from('admin_settings')
+        .select('admin_password')
+        .single();
+    
+    if (error) {
+        console.error('Login error:', error);
+        return res.status(500).json({ error: error.message });
+    }
+    
+    if (password === data.admin_password) {
+        res.json({ success: true });
+    } else {
+        res.status(401).json({ error: 'Invalid password' });
+    }
+});
+
+// Get all reservations - FIXED
 app.get('/api/admin/reservations', async (req, res) => {
     try {
-        console.log('📋 Fetching reservations...');
+        console.log('Fetching reservations...');
         
-        // Simplified query without participants join
         const { data: reservations, error } = await supabase
             .from('reservations')
             .select('*')
             .order('created_at', { ascending: false });
         
         if (error) {
-            console.error('❌ DB Error:', error);
+            console.error('DB Error:', error);
             return res.status(500).json({ error: error.message });
         }
         
-        // Get participants separately for each reservation
-        const enrichedReservations = [];
-        for (const resv of reservations || []) {
+        // Get participants for each reservation
+        const results = [];
+        for (const resv of reservations) {
             const { data: participants, error: pErr } = await supabase
                 .from('participants')
                 .select('*')
                 .eq('reservation_id', resv.id);
             
-            enrichedReservations.push({
+            results.push({
                 ...resv,
                 participants: participants || []
             });
         }
         
-        console.log(`✅ Found ${enrichedReservations.length} reservations`);
-        res.json(enrichedReservations);
+        console.log(`Found ${results.length} reservations`);
+        res.json(results);
         
     } catch (err) {
-        console.error('💥 Error:', err);
+        console.error('Error:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -222,21 +213,6 @@ app.post('/api/admin/approve/:id', async (req, res) => {
 
 app.post('/api/admin/reject/:id', async (req, res) => {
     const { id } = req.params;
-    
-    // Get participants to return their seats
-    const { data: participants, error: fetchError } = await supabase
-        .from('participants')
-        .select('color_group')
-        .eq('reservation_id', id);
-    
-    if (!fetchError && participants) {
-        // Return seats for each participant's group
-        for (const p of participants) {
-            await supabase.rpc('decrement_group_count', { group_name: p.color_group });
-        }
-    }
-    
-    // Update status to rejected
     const { error } = await supabase
         .from('reservations')
         .update({ status: 'rejected' })
@@ -265,8 +241,7 @@ app.get('/api/admin/export-excel', async (req, res) => {
         { header: 'Participant Name', key: 'name', width: 20 },
         { header: 'Age', key: 'age', width: 10 },
         { header: 'Days', key: 'days', width: 15 },
-        { header: 'Color Group', key: 'color', width: 15 },
-        { header: 'Price per Person', key: 'person_price', width: 15 }
+        { header: 'Color Group', key: 'color', width: 15 }
     ];
     
     reservations.forEach(reservation => {
@@ -279,8 +254,7 @@ app.get('/api/admin/export-excel', async (req, res) => {
                 name: participant.name,
                 age: participant.age,
                 days: participant.days,
-                color: participant.color_group,
-                person_price: participant.price
+                color: participant.color_group
             });
         });
     });
@@ -301,26 +275,6 @@ app.get('/api/admin/total-sales', async (req, res) => {
     const total = data.reduce((sum, r) => sum + parseFloat(r.total_price), 0);
     res.json({ total_sales: total });
 });
-
-// Direct test endpoint
-app.get('/api/direct-test', async (req, res) => {
-    try {
-        // Try with explicit schema
-        const { data, error } = await supabase
-            .schema('public')
-            .from('admin_settings')
-            .select('*');
-        
-        res.json({ 
-            error: error, 
-            data: data,
-            message: 'Check console for details'
-        });
-    } catch (err) {
-        res.json({ error: err.message });
-    }
-});
-
 
 const PORT = 5000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
