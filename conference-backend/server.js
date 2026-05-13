@@ -267,49 +267,134 @@ app.post('/api/admin/reject/:id', async (req, res) => {
     res.json({ success: true });
 });
 
+// Export Excel - SIMPLE VERSION (no timeout)
 app.get('/api/admin/export-excel', async (req, res) => {
-    const { data: reservations, error } = await supabase
-        .from('reservations')
-        .select('*, participants(*)')
-        .eq('status', 'approved');
-    
-    if (error) return res.status(500).json({ error: error.message });
-    
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Approved Reservations');
-    
-    worksheet.columns = [
-        { header: 'Reservation ID', key: 'id', width: 15 },
-        { header: 'Phone Number', key: 'phone', width: 20 },
-        { header: 'Total Price', key: 'price', width: 15 },
-        { header: 'Payment Platform', key: 'platform', width: 20 },
-        { header: 'Participant Name', key: 'name', width: 20 },
-        { header: 'Age', key: 'age', width: 10 },
-        { header: 'Days', key: 'days', width: 15 },
-        { header: 'Color Group', key: 'color', width: 15 },
-        { header: 'Price per Person', key: 'person_price', width: 15 }
-    ];
-    
-    reservations.forEach(reservation => {
-        reservation.participants.forEach(participant => {
-            worksheet.addRow({
-                id: reservation.id,
-                phone: reservation.phone_number,
-                price: reservation.total_price,
-                platform: reservation.payment_platform,
-                name: participant.name,
-                age: participant.age,
-                days: participant.days,
-                color: participant.color_group,
-                person_price: participant.price
-            });
-        });
-    });
-    
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=approved-reservations.xlsx');
-    await workbook.xlsx.write(res);
-    res.end();
+    try {
+        console.log('📊 Generating Excel export...');
+        
+        // First, get all approved reservations
+        const { data: reservations, error: rError } = await supabase
+            .from('reservations')
+            .select('id, phone_number, total_price, payment_platform, status, created_at')
+            .eq('status', 'approved')
+            .order('created_at', { ascending: false });
+        
+        if (rError) {
+            console.error('Error fetching reservations:', rError);
+            return res.status(500).json({ error: rError.message });
+        }
+        
+        if (!reservations || reservations.length === 0) {
+            // Create empty workbook
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Approved Reservations');
+            worksheet.addRow(['No approved reservations found']);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=approved-reservations.xlsx');
+            await workbook.xlsx.write(res);
+            res.end();
+            return;
+        }
+        
+        // Get participants for all reservations in ONE query
+        const reservationIds = reservations.map(r => r.id);
+        const { data: allParticipants, error: pError } = await supabase
+            .from('participants')
+            .select('*')
+            .in('reservation_id', reservationIds);
+        
+        if (pError) {
+            console.error('Error fetching participants:', pError);
+        }
+        
+        // Group participants by reservation_id
+        const participantsByReservation = {};
+        for (const p of allParticipants || []) {
+            if (!participantsByReservation[p.reservation_id]) {
+                participantsByReservation[p.reservation_id] = [];
+            }
+            participantsByReservation[p.reservation_id].push(p);
+        }
+        
+        // Create Excel workbook
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Approved Reservations');
+        
+        // Add headers
+        worksheet.columns = [
+            { header: 'Reservation ID', key: 'id', width: 15 },
+            { header: 'Phone Number', key: 'phone', width: 20 },
+            { header: 'Total Price (EGP)', key: 'price', width: 15 },
+            { header: 'Payment Platform', key: 'platform', width: 20 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Date', key: 'date', width: 20 },
+            { header: 'Participant Name', key: 'name', width: 25 },
+            { header: 'Participant Age', key: 'age', width: 12 },
+            { header: 'Participant Days', key: 'days', width: 15 },
+            { header: 'Participant Color Group', key: 'color', width: 18 },
+            { header: 'Participant Price', key: 'person_price', width: 15 }
+        ];
+        
+        // Add rows
+        for (const reservation of reservations) {
+            const participants = participantsByReservation[reservation.id] || [];
+            
+            if (participants.length === 0) {
+                // Reservation with no participants
+                worksheet.addRow({
+                    id: reservation.id,
+                    phone: reservation.phone_number,
+                    price: reservation.total_price,
+                    platform: reservation.payment_platform,
+                    status: reservation.status,
+                    date: new Date(reservation.created_at).toLocaleDateString('en-EG'),
+                    name: 'No participants',
+                    age: '-',
+                    days: '-',
+                    color: '-',
+                    person_price: '-'
+                });
+            } else {
+                // One row per participant
+                for (const participant of participants) {
+                    worksheet.addRow({
+                        id: reservation.id,
+                        phone: reservation.phone_number,
+                        price: reservation.total_price,
+                        platform: reservation.payment_platform,
+                        status: reservation.status,
+                        date: new Date(reservation.created_at).toLocaleDateString('en-EG'),
+                        name: participant.name || 'N/A',
+                        age: participant.age || '-',
+                        days: participant.days || '-',
+                        color: participant.color_group || '-',
+                        person_price: participant.price || '-'
+                    });
+                }
+            }
+        }
+        
+        // Style the header row
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF667EEA' }
+        };
+        
+        // Send file
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=approved-reservations.xlsx');
+        
+        await workbook.xlsx.write(res);
+        res.end();
+        
+        console.log(`✅ Excel exported with ${reservations.length} reservations`);
+        
+    } catch (err) {
+        console.error('Export error:', err);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.get('/api/admin/total-sales', async (req, res) => {
