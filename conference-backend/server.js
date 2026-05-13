@@ -267,116 +267,112 @@ app.post('/api/admin/reject/:id', async (req, res) => {
     res.json({ success: true });
 });
 
-// Export Excel - SIMPLE VERSION (no timeout)
+// Export Excel - CORRECTED VERSION
 app.get('/api/admin/export-excel', async (req, res) => {
     try {
-        console.log('📊 Generating Excel export...');
+        console.log('📊 Generating Excel export with participants...');
         
-        // First, get all approved reservations
-        const { data: reservations, error: rError } = await supabase
-            .from('reservations')
-            .select('id, phone_number, total_price, payment_platform, status, created_at')
-            .eq('status', 'approved')
-            .order('created_at', { ascending: false });
+        // Get ALL approved reservations with their participants using a raw SQL query
+        const { data, error } = await supabase
+            .rpc('get_approved_reservations_with_participants');
         
-        if (rError) {
-            console.error('Error fetching reservations:', rError);
-            return res.status(500).json({ error: rError.message });
-        }
+        // If RPC doesn't exist, use this alternative query
+        let reservationsWithParticipants = [];
         
-        if (!reservations || reservations.length === 0) {
-            // Create empty workbook
-            const workbook = new ExcelJS.Workbook();
-            const worksheet = workbook.addWorksheet('Approved Reservations');
-            worksheet.addRow(['No approved reservations found']);
-            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', 'attachment; filename=approved-reservations.xlsx');
-            await workbook.xlsx.write(res);
-            res.end();
-            return;
-        }
-        
-        // Get participants for all reservations in ONE query
-        const reservationIds = reservations.map(r => r.id);
-        const { data: allParticipants, error: pError } = await supabase
-            .from('participants')
-            .select('*')
-            .in('reservation_id', reservationIds);
-        
-        if (pError) {
-            console.error('Error fetching participants:', pError);
-        }
-        
-        // Group participants by reservation_id
-        const participantsByReservation = {};
-        for (const p of allParticipants || []) {
-            if (!participantsByReservation[p.reservation_id]) {
-                participantsByReservation[p.reservation_id] = [];
+        if (error || !data) {
+            console.log('RPC not available, using fallback query...');
+            
+            // Get all approved reservations
+            const { data: reservations, error: rError } = await supabase
+                .from('reservations')
+                .select('*')
+                .eq('status', 'approved')
+                .order('created_at', { ascending: false });
+            
+            if (rError) throw rError;
+            
+            // Get all participants
+            const { data: allParticipants, error: pError } = await supabase
+                .from('participants')
+                .select('*');
+            
+            if (pError) throw pError;
+            
+            // Group participants by reservation_id
+            const partsByResId = {};
+            for (const p of allParticipants || []) {
+                const rid = p.reservation_id;
+                if (!partsByResId[rid]) partsByResId[rid] = [];
+                partsByResId[rid].push(p);
             }
-            participantsByReservation[p.reservation_id].push(p);
+            
+            // Combine
+            reservationsWithParticipants = reservations.map(r => ({
+                ...r,
+                participants: partsByResId[r.id] || []
+            }));
+        } else {
+            reservationsWithParticipants = data;
         }
         
         // Create Excel workbook
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Approved Reservations');
         
-        // Add headers
+        // Add headers exactly like your good file
         worksheet.columns = [
             { header: 'Reservation ID', key: 'id', width: 15 },
             { header: 'Phone Number', key: 'phone', width: 20 },
-            { header: 'Total Price (EGP)', key: 'price', width: 15 },
+            { header: 'Total Price', key: 'price', width: 15 },
             { header: 'Payment Platform', key: 'platform', width: 20 },
-            { header: 'Status', key: 'status', width: 15 },
-            { header: 'Date', key: 'date', width: 20 },
             { header: 'Participant Name', key: 'name', width: 25 },
-            { header: 'Participant Age', key: 'age', width: 12 },
-            { header: 'Participant Days', key: 'days', width: 15 },
-            { header: 'Participant Color Group', key: 'color', width: 18 },
-            { header: 'Participant Price', key: 'person_price', width: 15 }
+            { header: 'Age', key: 'age', width: 10 },
+            { header: 'Days', key: 'days', width: 15 },
+            { header: 'Color Group', key: 'color', width: 18 },
+            { header: 'Price per Person', key: 'person_price', width: 15 }
         ];
         
-        // Add rows
-        for (const reservation of reservations) {
-            const participants = participantsByReservation[reservation.id] || [];
+        // Add rows - one row per participant
+        let rowCount = 0;
+        for (const reservation of reservationsWithParticipants) {
+            const participants = reservation.participants || [];
             
             if (participants.length === 0) {
-                // Reservation with no participants
+                // Reservation with no participants - still add one row
                 worksheet.addRow({
                     id: reservation.id,
                     phone: reservation.phone_number,
                     price: reservation.total_price,
                     platform: reservation.payment_platform,
-                    status: reservation.status,
-                    date: new Date(reservation.created_at).toLocaleDateString('en-EG'),
-                    name: 'No participants',
+                    name: 'NO PARTICIPANT DATA',
                     age: '-',
                     days: '-',
                     color: '-',
                     person_price: '-'
                 });
+                rowCount++;
             } else {
-                // One row per participant
                 for (const participant of participants) {
                     worksheet.addRow({
                         id: reservation.id,
                         phone: reservation.phone_number,
                         price: reservation.total_price,
                         platform: reservation.payment_platform,
-                        status: reservation.status,
-                        date: new Date(reservation.created_at).toLocaleDateString('en-EG'),
                         name: participant.name || 'N/A',
                         age: participant.age || '-',
                         days: participant.days || '-',
                         color: participant.color_group || '-',
                         person_price: participant.price || '-'
                     });
+                    rowCount++;
                 }
             }
         }
         
         // Style the header row
-        worksheet.getRow(1).font = { bold: true };
-        worksheet.getRow(1).fill = {
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        headerRow.fill = {
             type: 'pattern',
             pattern: 'solid',
             fgColor: { argb: 'FF667EEA' }
@@ -389,7 +385,7 @@ app.get('/api/admin/export-excel', async (req, res) => {
         await workbook.xlsx.write(res);
         res.end();
         
-        console.log(`✅ Excel exported with ${reservations.length} reservations`);
+        console.log(`✅ Excel exported with ${rowCount} rows`);
         
     } catch (err) {
         console.error('Export error:', err);
