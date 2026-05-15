@@ -39,40 +39,38 @@ app.get('/api/test-db', async (req, res) => {
     }
 });
 
-// Get available groups - SIMPLE WORKING VERSION
+// Get available groups - RETURNS REAL DATABASE DATA
 app.get('/api/groups', async (req, res) => {
     try {
-        console.log('Fetching groups...');
+        console.log('Fetching real groups from database...');
         
-        // Get daily capacity for both days
+        // Get daily capacity from your actual database
         const { data: dailyData, error } = await supabase
             .from('daily_group_capacity')
             .select('*');
         
         if (error) {
             console.error('DB Error:', error);
-            // Return fallback data if table doesn't exist
-            return res.json([
-                { color_name: 'Red Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-                { color_name: 'Blue Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-                { color_name: 'Green Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-                { color_name: 'Yellow Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-                { color_name: 'Purple Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-                { color_name: 'Orange Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } }
-            ]);
+            return res.status(500).json({ error: error.message });
         }
         
-        // Organize by color
+        console.log('Raw data from DB:', dailyData);
+        
+        // Organize by color name
         const groupsMap = {};
+        const allColors = ['Red Group', 'Blue Group', 'Green Group', 'Yellow Group', 'Purple Group', 'Orange Group'];
+        
+        // Initialize all colors with default values
+        for (const color of allColors) {
+            groupsMap[color] = {
+                color_name: color,
+                seats_29th: { available: 0, is_full: true, max: 0, current: 0 },
+                seats_30th: { available: 0, is_full: true, max: 0, current: 0 }
+            };
+        }
+        
+        // Fill with actual database values
         for (const item of dailyData) {
-            if (!groupsMap[item.color_name]) {
-                groupsMap[item.color_name] = {
-                    color_name: item.color_name,
-                    seats_29th: { available: 0, is_full: true },
-                    seats_30th: { available: 0, is_full: true }
-                };
-            }
-            
             const available = item.max_capacity - item.current_count;
             const seatData = {
                 available: available,
@@ -89,7 +87,7 @@ app.get('/api/groups', async (req, res) => {
         }
         
         const result = Object.values(groupsMap);
-        console.log(`Returning ${result.length} groups`);
+        console.log('Returning groups with real data:', JSON.stringify(result, null, 2));
         res.json(result);
         
     } catch (err) {
