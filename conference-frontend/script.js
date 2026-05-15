@@ -13,25 +13,45 @@ const PRICES = {
 const BACKEND_URL = 'https://threeashan-b7bk-2026.onrender.com';
 
 // Load groups from backend
+// Load groups from backend
 async function loadGroups() {
     try {
+        console.log('Loading groups from:', `${BACKEND_URL}/api/groups`);
+        
         const response = await fetch(`${BACKEND_URL}/api/groups`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
         groupsData = await response.json();
-        console.log('Groups loaded with daily availability:', groupsData);
-        populateGroupOptions();
+        console.log('Groups loaded:', groupsData);
+        
+        // Ensure the data has the expected structure
+        if (groupsData && groupsData.length > 0) {
+            populateGroupOptions();
+        } else {
+            console.warn('No groups data received, using fallback');
+            useFallbackGroups();
+        }
+        
     } catch (error) {
         console.error('Error loading groups:', error);
-        // Fallback data with empty availability
-        groupsData = [
-            { color_name: 'Red Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-            { color_name: 'Blue Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-            { color_name: 'Green Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-            { color_name: 'Yellow Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-            { color_name: 'Purple Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
-            { color_name: 'Orange Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } }
-        ];
-        populateGroupOptions();
+        useFallbackGroups();
     }
+}
+
+// Fallback function if API fails
+function useFallbackGroups() {
+    groupsData = [
+        { color_name: 'Red Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+        { color_name: 'Blue Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+        { color_name: 'Green Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+        { color_name: 'Yellow Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+        { color_name: 'Purple Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+        { color_name: 'Orange Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } }
+    ];
+    populateGroupOptions();
 }
 
 function populateGroupOptions() {
