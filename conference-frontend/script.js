@@ -17,18 +17,18 @@ async function loadGroups() {
     try {
         const response = await fetch(`${BACKEND_URL}/api/groups`);
         groupsData = await response.json();
-        console.log('Groups loaded:', groupsData); // For debugging
+        console.log('Groups loaded with daily availability:', groupsData);
         populateGroupOptions();
     } catch (error) {
         console.error('Error loading groups:', error);
-        // Fallback groups if backend not running
+        // Fallback data with empty availability
         groupsData = [
-            { color_name: 'Red Group', max_capacity: 10, current_count: 0, seats_available: 10, is_full: false },
-            { color_name: 'Blue Group', max_capacity: 10, current_count: 0, seats_available: 10, is_full: false },
-            { color_name: 'Green Group', max_capacity: 10, current_count: 0, seats_available: 10, is_full: false },
-            { color_name: 'Yellow Group', max_capacity: 10, current_count: 0, seats_available: 10, is_full: false },
-            { color_name: 'Purple Group', max_capacity: 10, current_count: 0, seats_available: 10, is_full: false },
-            { color_name: 'Orange Group', max_capacity: 10, current_count: 0, seats_available: 10, is_full: false }
+            { color_name: 'Red Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+            { color_name: 'Blue Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+            { color_name: 'Green Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+            { color_name: 'Yellow Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+            { color_name: 'Purple Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } },
+            { color_name: 'Orange Group', seats_29th: { available: 10, is_full: false }, seats_30th: { available: 10, is_full: false } }
         ];
         populateGroupOptions();
     }
@@ -36,18 +36,59 @@ async function loadGroups() {
 
 function populateGroupOptions() {
     const groupSelects = document.querySelectorAll('.participant-group');
+    const selectedDate = document.getElementById('selectedDay').value;
+    const selectedDaysType = selectedDays;
+    
     groupSelects.forEach(select => {
         const currentValue = select.value;
-        select.innerHTML = '<option value="">اختر المجموعة</option>'; // Add default option
+        select.innerHTML = '<option value="">اختر المجموعة</option>';
+        
         groupsData.forEach(group => {
             const option = document.createElement('option');
             option.value = group.color_name;
-            const seatsText = group.is_full ? ' (مكتمل)' : ` (${group.seats_available} متاح)`;
+            
+            let seatsText = '';
+            let isDisabled = false;
+            
+            if (selectedDaysType === 'twoDays') {
+                // For "Both Days", check both days
+                const seats29th = group.seats_29th;
+                const seats30th = group.seats_30th;
+                const available29th = seats29th?.available || 0;
+                const available30th = seats30th?.available || 0;
+                const isFull29th = seats29th?.is_full || false;
+                const isFull30th = seats30th?.is_full || false;
+                
+                if (isFull29th && isFull30th) {
+                    seatsText = ` (مكتمل - كلا اليومين)`;
+                    isDisabled = true;
+                } else if (isFull29th) {
+                    seatsText = ` (مكتمل في 29 مايو فقط - يتبقى ${available30th} في 30 مايو)`;
+                    isDisabled = true;
+                } else if (isFull30th) {
+                    seatsText = ` (مكتمل في 30 مايو فقط - يتبقى ${available29th} في 29 مايو)`;
+                    isDisabled = true;
+                } else {
+                    seatsText = ` (متاح لكلا اليومين: 29 مايو: ${available29th} | 30 مايو: ${available30th})`;
+                    isDisabled = false;
+                }
+            } else {
+                // For single day
+                const dateKey = selectedDate === '29th May' ? 'seats_29th' : 'seats_30th';
+                const seatsData = group[dateKey];
+                
+                if (seatsData) {
+                    seatsText = seatsData.is_full ? ' (مكتمل)' : ` (${seatsData.available} مقعد متاح)`;
+                    isDisabled = seatsData.is_full;
+                }
+            }
+            
             option.textContent = `${group.color_name}${seatsText}`;
-            option.disabled = group.is_full;
+            option.disabled = isDisabled;
             select.appendChild(option);
         });
-        if (currentValue && [...select.options].some(opt => opt.value === currentValue)) {
+        
+        if (currentValue && [...select.options].some(opt => opt.value === currentValue && !opt.disabled)) {
             select.value = currentValue;
         }
     });
@@ -55,19 +96,58 @@ function populateGroupOptions() {
 }
 
 function updateSeatAvailability() {
+    const selectedDate = document.getElementById('selectedDay').value;
+    const selectedDaysType = selectedDays; // 'oneDay' or 'twoDays'
     const cards = document.querySelectorAll('.participant-card');
-    cards.forEach((card, index) => {
+    
+    cards.forEach((card) => {
         const groupSelect = card.querySelector('.participant-group');
         const seatsDiv = card.querySelector('.group-seats');
         const selectedGroup = groupSelect.value;
+        
         const group = groupsData.find(g => g.color_name === selectedGroup);
         if (group && selectedGroup) {
-            if (group.is_full) {
-                seatsDiv.innerHTML = '❌ مجموعة مكتملة';
-                seatsDiv.className = 'group-seats full';
+            if (selectedDaysType === 'twoDays') {
+                // For "Both Days", check availability for BOTH days
+                const seats29th = group.seats_29th;
+                const seats30th = group.seats_30th;
+                
+                const isFull29th = seats29th?.is_full || false;
+                const isFull30th = seats30th?.is_full || false;
+                const available29th = seats29th?.available || 0;
+                const available30th = seats30th?.available || 0;
+                
+                if (isFull29th || isFull30th) {
+                    let message = '❌ غير متاح لكلا اليومين - ';
+                    if (isFull29th && isFull30th) {
+                        message += 'مكتمل في اليومين';
+                    } else if (isFull29th) {
+                        message += `مكتمل في 29 مايو (يتبقى ${available30th} في 30 مايو)`;
+                    } else {
+                        message += `مكتمل في 30 مايو (يتبقى ${available29th} في 29 مايو)`;
+                    }
+                    seatsDiv.innerHTML = message;
+                    seatsDiv.className = 'group-seats full';
+                    // Disable the option if either day is full
+                    groupSelect.querySelector(`option[value="${selectedGroup}"]`).disabled = true;
+                } else {
+                    seatsDiv.innerHTML = `✅ متاح لكلا اليومين (29 مايو: ${available29th} مقعد | 30 مايو: ${available30th} مقعد)`;
+                    seatsDiv.className = 'group-seats';
+                }
             } else {
-                seatsDiv.innerHTML = `✅ ${group.seats_available} مقعد متاح`;
-                seatsDiv.className = 'group-seats';
+                // For single day, check only the selected date
+                const dateKey = selectedDate === '29th May' ? 'seats_29th' : 'seats_30th';
+                const seatsData = group[dateKey];
+                
+                if (seatsData?.is_full) {
+                    seatsDiv.innerHTML = `❌ مجموعة مكتملة ليوم ${selectedDate}`;
+                    seatsDiv.className = 'group-seats full';
+                } else if (seatsData) {
+                    seatsDiv.innerHTML = `✅ ${seatsData.available} مقعد متاح ليوم ${selectedDate}`;
+                    seatsDiv.className = 'group-seats';
+                } else {
+                    seatsDiv.innerHTML = '';
+                }
             }
         } else {
             seatsDiv.innerHTML = '';
@@ -275,6 +355,32 @@ document.getElementById('addParticipantBtn').addEventListener('click', addPartic
 document.getElementById('reservationForm').addEventListener('submit', submitReservation);
 document.getElementById('langBtn').addEventListener('click', toggleLanguage);
 document.getElementById('themeBtn').addEventListener('click', toggleTheme);
+
+// Update availability when toggling between one day and both days
+document.getElementById('oneDayBtn').addEventListener('click', () => {
+    selectedDays = 'oneDay';
+    document.getElementById('dayChoice').classList.remove('hidden');
+    document.getElementById('oneDayBtn').classList.add('selected');
+    document.getElementById('twoDaysBtn').classList.remove('selected');
+    calculateTotalPrice();
+    populateGroupOptions(); // Refresh group availability
+});
+
+document.getElementById('twoDaysBtn').addEventListener('click', () => {
+    selectedDays = 'twoDays';
+    document.getElementById('dayChoice').classList.add('hidden');
+    document.getElementById('twoDaysBtn').classList.add('selected');
+    document.getElementById('oneDayBtn').classList.remove('selected');
+    calculateTotalPrice();
+    populateGroupOptions(); // Refresh group availability
+});
+
+// Update availability when date changes (for one day mode)
+document.getElementById('selectedDay').addEventListener('change', (e) => {
+    selectedOneDay = e.target.value;
+    calculateTotalPrice();
+    populateGroupOptions(); // Refresh group availability for new date
+});
 
 // Initialize
 loadGroups();

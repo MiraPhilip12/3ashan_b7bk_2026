@@ -28,11 +28,11 @@ app.get('/api/test-db', async (req, res) => {
         const { data, error } = await supabase
             .from('admin_settings')
             .select('*');
-        
+
         if (error) {
             return res.json({ error: error.message, details: error });
         }
-        
+
         res.json({ success: true, data: data });
     } catch (err) {
         res.json({ error: err.message });
@@ -40,49 +40,85 @@ app.get('/api/test-db', async (req, res) => {
 });
 
 // Get groups
+// Get available groups with per-day seat counts
 app.get('/api/groups', async (req, res) => {
     try {
-        const { data, error } = await supabase.from('group_capacity').select('*');
+        // Get daily capacity for both days
+        const { data: dailyData, error } = await supabase
+            .from('daily_group_capacity')
+            .select('*');
+
         if (error) throw error;
-        
-        const groupsWithAvailability = data.map(group => ({
-            ...group,
-            seats_available: group.max_capacity - group.current_count,
-            is_full: (group.max_capacity - group.current_count) <= 0
+
+        // Organize by color and date
+        const groupsWithDaily = {};
+        for (const item of dailyData) {
+            if (!groupsWithDaily[item.color_name]) {
+                groupsWithDaily[item.color_name] = {};
+            }
+            groupsWithDaily[item.color_name][item.date] = {
+                available: item.max_capacity - item.current_count,
+                max: item.max_capacity,
+                current: item.current_count,
+                is_full: (item.max_capacity - item.current_count) <= 0
+            };
+        }
+
+        // Format response
+        const result = Object.keys(groupsWithDaily).map(color => ({
+            color_name: color,
+            color_code: getColorCode(color),
+            seats_29th: groupsWithDaily[color]['29th May'],
+            seats_30th: groupsWithDaily[color]['30th May']
         }));
-        res.json(groupsWithAvailability);
+
+        res.json(result);
+
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
+// Helper function for color codes
+function getColorCode(colorName) {
+    const colors = {
+        'Red Group': '#FF0000',
+        'Blue Group': '#0000FF',
+        'Green Group': '#00FF00',
+        'Yellow Group': '#FFFF00',
+        'Purple Group': '#800080',
+        'Orange Group': '#FFA500'
+    };
+    return colors[colorName] || '#999999';
+}
+
 // ADMIN LOGIN - FIXED with better error handling
 app.post('/api/admin/login', async (req, res) => {
     const { password } = req.body;
     console.log('Login attempt with password:', password);
-    
+
     try {
         // Use select('*') instead of single() to debug
         const { data, error } = await supabase
             .from('admin_settings')
             .select('*');
-        
+
         console.log('Query result:', { data, error });
-        
+
         if (error) {
             console.error('Database error:', error);
             return res.status(500).json({ error: error.message });
         }
-        
+
         if (!data || data.length === 0) {
             console.error('No admin settings found');
             return res.status(500).json({ error: 'No admin settings in database' });
         }
-        
+
         const adminPassword = data[0].admin_password;
         console.log('Password from DB:', adminPassword);
         console.log('Comparison:', password === adminPassword);
-        
+
         if (password === adminPassword) {
             res.json({ success: true });
         } else {
@@ -98,49 +134,49 @@ app.post('/api/admin/login', async (req, res) => {
 app.post('/api/reservations', upload.array('national_id_images', 20), async (req, res) => {
     try {
         console.log('=== NEW SUBMISSION ===');
-        
+
         const formData = JSON.parse(req.body.data);
         const { phone_number, total_price, payment_platform, participants } = formData;
-        
+
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'No files uploaded' });
         }
-        
+
         const paymentBase64 = req.files[0].buffer.toString('base64');
         const paymentMimeType = req.files[0].mimetype;
         const paymentFullBase64 = `data:${paymentMimeType};base64,${paymentBase64}`;
-        
-                // Create reservation - using base64 column only
+
+        // Create reservation - using base64 column only
         const { data: reservation, error: reservationError } = await supabase
             .from('reservations')
-            .insert({ 
-                phone_number, 
-                total_price, 
-                payment_platform, 
+            .insert({
+                phone_number,
+                total_price,
+                payment_platform,
                 payment_screenshot_base64: paymentFullBase64,
                 payment_screenshot: null,  // Set to null since we use base64
-                status: 'pending' 
+                status: 'pending'
             })
             .select()
             .single();
-        
+
         if (reservationError) {
             console.error('Reservation error:', reservationError);
             return res.status(500).json({ error: reservationError.message });
         }
-        
+
         console.log('Reservation created:', reservation.id);
-        
+
         for (let i = 0; i < participants.length; i++) {
             const p = participants[i];
             const idFile = req.files[i + 1];
-            
+
             let nationalIdBase64 = null;
             if (idFile) {
                 const idBase64 = idFile.buffer.toString('base64');
                 nationalIdBase64 = `data:${idFile.mimetype};base64,${idBase64}`;
             }
-            
+
             const { error: participantError } = await supabase
                 .from('participants')
                 .insert({
@@ -153,17 +189,41 @@ app.post('/api/reservations', upload.array('national_id_images', 20), async (req
                     color_group: p.color_group,
                     price: parseFloat(p.price)
                 });
-            
+
             if (participantError) {
                 console.error('Participant insert error:', participantError);
             }
-            
+
+            // After creating the participant, update daily group count
+            const daysValue = p.days; // '29th May', '30th May', or 'Both Days'
+
+            if (daysValue === '29th May') {
+                await supabase.rpc('increment_daily_group_count', {
+                    group_name: p.color_group,
+                    event_date: '29th May'
+                });
+            } else if (daysValue === '30th May') {
+                await supabase.rpc('increment_daily_group_count', {
+                    group_name: p.color_group,
+                    event_date: '30th May'
+                });
+            } else if (daysValue === 'Both Days') {
+                await supabase.rpc('increment_daily_group_count', {
+                    group_name: p.color_group,
+                    event_date: '29th May'
+                });
+                await supabase.rpc('increment_daily_group_count', {
+                    group_name: p.color_group,
+                    event_date: '30th May'
+                });
+            }
+
             await supabase.rpc('increment_group_count', { group_name: p.color_group });
         }
-        
+
         console.log('=== SUBMISSION COMPLETE ===');
         res.json({ success: true, message: 'Reservation submitted!', reservation_id: reservation.id });
-        
+
     } catch (error) {
         console.error('Fatal error:', error);
         res.status(500).json({ error: error.message });
@@ -192,7 +252,7 @@ app.get('/api/admin/reservations', async (req, res) => {
                 )
             `) // Notice: We EXCLUDED payment_screenshot_base64 and national_id_image_base64
             .order('created_at', { ascending: false });
-        
+
         if (error) throw error;
         res.json(reservations || []);
     } catch (err) {
@@ -209,7 +269,7 @@ app.get('/api/admin/participant-image/:id', async (req, res) => {
         .select('national_id_image_base64')
         .eq('id', req.params.id)
         .single();
-    
+
     if (error) return res.status(500).json({ error: error.message });
     res.json({ image: data.national_id_image_base64 });
 });
@@ -221,7 +281,7 @@ app.get('/api/admin/payment-image/:id', async (req, res) => {
         .select('payment_screenshot_base64')
         .eq('id', req.params.id)
         .single();
-    
+
     if (error) return res.status(500).json({ error: error.message });
     res.json({ image: data.payment_screenshot_base64 });
 });
@@ -236,7 +296,7 @@ app.post('/api/admin/approve/:id', async (req, res) => {
         .from('reservations')
         .update({ status: 'approved' })
         .eq('id', id);
-    
+
     if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true });
 });
@@ -247,13 +307,31 @@ app.post('/api/admin/reject/:id', async (req, res) => {
     // Get participants to return their seats
     const { data: participants, error: fetchError } = await supabase
         .from('participants')
-        .select('color_group')
+        .select('color_group, days')
         .eq('reservation_id', id);
     
     if (!fetchError && participants) {
-        // Return seats for each participant's group
         for (const p of participants) {
-            await supabase.rpc('decrement_group_count', { group_name: p.color_group });
+            if (p.days === '29th May') {
+                await supabase.rpc('decrement_daily_group_count', { 
+                    group_name: p.color_group, 
+                    event_date: '29th May' 
+                });
+            } else if (p.days === '30th May') {
+                await supabase.rpc('decrement_daily_group_count', { 
+                    group_name: p.color_group, 
+                    event_date: '30th May' 
+                });
+            } else if (p.days === 'Both Days') {
+                await supabase.rpc('decrement_daily_group_count', { 
+                    group_name: p.color_group, 
+                    event_date: '29th May' 
+                });
+                await supabase.rpc('decrement_daily_group_count', { 
+                    group_name: p.color_group, 
+                    event_date: '30th May' 
+                });
+            }
         }
     }
     
@@ -271,33 +349,33 @@ app.post('/api/admin/reject/:id', async (req, res) => {
 app.get('/api/admin/export-excel', async (req, res) => {
     try {
         console.log('📊 Generating Excel export with participants...');
-        
+
         // Get ALL approved reservations with their participants using a raw SQL query
         const { data, error } = await supabase
             .rpc('get_approved_reservations_with_participants');
-        
+
         // If RPC doesn't exist, use this alternative query
         let reservationsWithParticipants = [];
-        
+
         if (error || !data) {
             console.log('RPC not available, using fallback query...');
-            
+
             // Get all approved reservations
             const { data: reservations, error: rError } = await supabase
                 .from('reservations')
                 .select('*')
                 .eq('status', 'approved')
                 .order('created_at', { ascending: false });
-            
+
             if (rError) throw rError;
-            
+
             // Get all participants
             const { data: allParticipants, error: pError } = await supabase
                 .from('participants')
                 .select('*');
-            
+
             if (pError) throw pError;
-            
+
             // Group participants by reservation_id
             const partsByResId = {};
             for (const p of allParticipants || []) {
@@ -305,7 +383,7 @@ app.get('/api/admin/export-excel', async (req, res) => {
                 if (!partsByResId[rid]) partsByResId[rid] = [];
                 partsByResId[rid].push(p);
             }
-            
+
             // Combine
             reservationsWithParticipants = reservations.map(r => ({
                 ...r,
@@ -314,11 +392,11 @@ app.get('/api/admin/export-excel', async (req, res) => {
         } else {
             reservationsWithParticipants = data;
         }
-        
+
         // Create Excel workbook
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Approved Reservations');
-        
+
         // Add headers exactly like your good file
         worksheet.columns = [
             { header: 'Reservation ID', key: 'id', width: 15 },
@@ -331,12 +409,12 @@ app.get('/api/admin/export-excel', async (req, res) => {
             { header: 'Color Group', key: 'color', width: 18 },
             { header: 'Price per Person', key: 'person_price', width: 15 }
         ];
-        
+
         // Add rows - one row per participant
         let rowCount = 0;
         for (const reservation of reservationsWithParticipants) {
             const participants = reservation.participants || [];
-            
+
             if (participants.length === 0) {
                 // Reservation with no participants - still add one row
                 worksheet.addRow({
@@ -368,7 +446,7 @@ app.get('/api/admin/export-excel', async (req, res) => {
                 }
             }
         }
-        
+
         // Style the header row
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -377,16 +455,16 @@ app.get('/api/admin/export-excel', async (req, res) => {
             pattern: 'solid',
             fgColor: { argb: 'FF667EEA' }
         };
-        
+
         // Send file
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', 'attachment; filename=approved-reservations.xlsx');
-        
+
         await workbook.xlsx.write(res);
         res.end();
-        
+
         console.log(`✅ Excel exported with ${rowCount} rows`);
-        
+
     } catch (err) {
         console.error('Export error:', err);
         res.status(500).json({ error: err.message });
@@ -398,7 +476,7 @@ app.get('/api/admin/total-sales', async (req, res) => {
         .from('reservations')
         .select('total_price')
         .eq('status', 'approved');
-    
+
     if (error) return res.status(500).json({ error: error.message });
     const total = data.reduce((sum, r) => sum + parseFloat(r.total_price), 0);
     res.json({ total_sales: total });
@@ -412,9 +490,9 @@ app.get('/api/direct-test', async (req, res) => {
             .schema('public')
             .from('admin_settings')
             .select('*');
-        
-        res.json({ 
-            error: error, 
+
+        res.json({
+            error: error,
             data: data,
             message: 'Check console for details'
         });
