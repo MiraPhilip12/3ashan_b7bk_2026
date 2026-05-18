@@ -83,13 +83,13 @@ function populateGroupOptions() {
                     seatsText = ` (مكتمل - كلا اليومين)`;
                     isDisabled = true;
                 } else if (isFull29th) {
-                    seatsText = ` (مكتمل في 29 مايو فقط - يتبقى ${available30th} في 30 مايو)`;
+                    seatsText = ` (مكتمل في 29 مايو فقط )`;
                     isDisabled = true;
                 } else if (isFull30th) {
-                    seatsText = ` (مكتمل في 30 مايو فقط - يتبقى ${available29th} في 29 مايو)`;
+                    seatsText = ` (مكتمل في 30 مايو فقط  )`;
                     isDisabled = true;
                 } else {
-                    seatsText = ` (متاح لكلا اليومين: 29 مايو: ${available29th} | 30 مايو: ${available30th})`;
+                    seatsText = ` (متاح لكلا اليومين)`;
                     isDisabled = false;
                 }
             } else {
