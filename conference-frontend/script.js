@@ -5,8 +5,8 @@ let groupsData = [];
 
 // Prices (you can change these)
 const PRICES = {
-    oneDay: 350,
-    twoDays: 700
+    oneDay: 250,
+    twoDays: 500
 };
 
 // Backend URL (change this when you deploy)
